@@ -1,0 +1,12 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+SQLAlchemy==2.0.35
+asyncpg==0.29.0
+alembic==1.13.2
+apscheduler==3.10.4
+python-telegram-bot==21.6
+python-dotenv==1.0.1
+pydantic-settings==2.5.2
+python-multipart==0.0.9
+dateparser==1.2.0
+croniter==3.0.3

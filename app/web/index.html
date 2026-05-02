@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Notifier</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/element-plus"></script>
+</head>
+<body>
+<div id="app" style="max-width: 1000px; margin: 30px auto; padding: 12px;">
+  <h2>Smart-Notifier 管理端</h2>
+  <el-form :inline="true" @submit.prevent>
+    <el-form-item label="Chat ID"><el-input v-model="chatId" placeholder="请输入 TG Chat ID"/></el-form-item>
+    <el-form-item>
+      <el-select v-model="statusFilter" placeholder="状态过滤" style="width: 160px;">
+        <el-option label="全部" value="" />
+        <el-option label="待办" value="pending" />
+        <el-option label="已完成" value="completed" />
+      </el-select>
+    </el-form-item>
+    <el-form-item><el-button type="primary" @click="load">刷新任务</el-button></el-form-item>
+  </el-form>
+
+  <el-card>
+    <template #header>新建任务</template>
+    <el-form label-width="110px">
+      <el-form-item label="提醒内容"><el-input v-model="form.content"/></el-form-item>
+      <el-form-item label="备注"><el-input v-model="form.remarks"/></el-form-item>
+      <el-form-item label="周期任务"><el-switch v-model="form.is_recurring"/></el-form-item>
+      <el-form-item v-if="!form.is_recurring" label="触发时间"><el-input v-model="form.trigger_time" placeholder="2026-05-04T10:00:00"/></el-form-item>
+      <el-form-item v-else label="Cron"><el-input v-model="form.cron_expr" placeholder="0 10 * * *"/></el-form-item>
+      <el-form-item><el-button type="success" @click="createTask">创建</el-button></el-form-item>
+    </el-form>
+  </el-card>
+
+  <el-table :data="tasks" style="margin-top: 16px;" border>
+    <el-table-column prop="id" label="ID" width="70" />
+    <el-table-column prop="content" label="内容" />
+    <el-table-column prop="remarks" label="备注" />
+    <el-table-column prop="status" label="状态" width="120" />
+    <el-table-column label="操作" width="220">
+      <template #default="scope">
+        <el-button size="small" type="success" :disabled="scope.row.status==='completed'" @click="markDone(scope.row)">✅ 完成</el-button>
+        <el-button size="small" type="danger" @click="deleteTask(scope.row)">🗑️ 删除</el-button>
+      </template>
+    </el-table-column>
+  </el-table>
+</div>
+
+<script>
+const { createApp, ref } = Vue
+createApp({
+  setup() {
+    const chatId = ref('')
+    const statusFilter = ref('')
+    const tasks = ref([])
+    const form = ref({content:'', remarks:'', is_recurring:false, trigger_time:'', cron_expr:''})
+
+    const load = async () => {
+      if (!chatId.value) return ElementPlus.ElMessage.error('请先输入 chat_id')
+      const params = new URLSearchParams({ chat_id: chatId.value })
+      if (statusFilter.value) params.set('status', statusFilter.value)
+      const res = await fetch(`/api/tasks?${params.toString()}`)
+      tasks.value = await res.json()
+    }
+
+    const createTask = async () => {
+      if (!chatId.value) return ElementPlus.ElMessage.error('请先输入 chat_id')
+      const payload = {
+        content: form.value.content,
+        remarks: form.value.remarks,
+        is_recurring: form.value.is_recurring,
+        trigger_time: form.value.is_recurring ? null : form.value.trigger_time,
+        cron_expr: form.value.is_recurring ? form.value.cron_expr : null,
+        chat_id: chatId.value,
+      }
+      const res = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+      if (!res.ok) {
+        const err = await res.text()
+        return ElementPlus.ElMessage.error(`创建失败: ${err}`)
+      }
+      ElementPlus.ElMessage.success('创建成功')
+      await load()
+    }
+
+    const markDone = async (row) => {
+      const res = await fetch(`/api/tasks/${row.id}/status`, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({status: 'completed'})
+      })
+      if (!res.ok) return ElementPlus.ElMessage.error('更新失败')
+      ElementPlus.ElMessage.success('已标记完成')
+      await load()
+    }
+
+    const deleteTask = async (row) => {
+      const res = await fetch(`/api/tasks/${row.id}`, { method: 'DELETE' })
+      if (!res.ok) return ElementPlus.ElMessage.error('删除失败')
+      ElementPlus.ElMessage.success('删除成功')
+      await load()
+    }
+
+    return { chatId, statusFilter, tasks, form, load, createTask, markDone, deleteTask }
+  }
+}).use(ElementPlus).mount('#app')
+</script>
+</body>
+</html>

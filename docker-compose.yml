@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: smart_notifier_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: smart_notifier
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: smart_notifier_app
+    restart: unless-stopped
+    depends_on:
+      - db
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+
+volumes:
+  pg_data:
