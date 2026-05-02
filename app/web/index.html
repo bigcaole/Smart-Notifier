@@ -9,10 +9,12 @@
   <script src="https://unpkg.com/element-plus"></script>
 </head>
 <body>
-<div id="app" style="max-width: 1000px; margin: 30px auto; padding: 12px;">
+<div id="app" style="max-width: 1100px; margin: 28px auto; padding: 12px;">
   <h2>Smart-Notifier 管理端</h2>
+  <p style="color:#666; margin-top:-6px;">新手提示：先点“刷新任务”可直接查看全部任务。若只看某个 Telegram 用户，再填 Chat ID（机器人里发送 /myid 可获取）。</p>
+
   <el-form :inline="true" @submit.prevent>
-    <el-form-item label="Chat ID"><el-input v-model="chatId" placeholder="请输入 TG Chat ID"/></el-form-item>
+    <el-form-item label="Chat ID(可选)"><el-input v-model="chatId" placeholder="不填则显示全部任务" style="width:260px"/></el-form-item>
     <el-form-item>
       <el-select v-model="statusFilter" placeholder="状态过滤" style="width: 160px;">
         <el-option label="全部" value="" />
@@ -24,21 +26,28 @@
   </el-form>
 
   <el-card>
-    <template #header>新建任务</template>
-    <el-form label-width="110px">
-      <el-form-item label="提醒内容"><el-input v-model="form.content"/></el-form-item>
-      <el-form-item label="备注"><el-input v-model="form.remarks"/></el-form-item>
+    <template #header>新建任务（Web）</template>
+    <el-form label-width="120px">
+      <el-form-item label="目标 Chat ID"><el-input v-model="form.chat_id" placeholder="必填；机器人里发送 /myid 获取"/></el-form-item>
+      <el-form-item label="提醒内容"><el-input v-model="form.content" placeholder="例如：给客户发周报"/></el-form-item>
+      <el-form-item label="备注"><el-input v-model="form.remarks" placeholder="可选，例如：网址/账号/说明"/></el-form-item>
       <el-form-item label="周期任务"><el-switch v-model="form.is_recurring"/></el-form-item>
-      <el-form-item v-if="!form.is_recurring" label="触发时间"><el-input v-model="form.trigger_time" placeholder="2026-05-04T10:00:00"/></el-form-item>
-      <el-form-item v-else label="Cron"><el-input v-model="form.cron_expr" placeholder="0 10 * * *"/></el-form-item>
-      <el-form-item><el-button type="success" @click="createTask">创建</el-button></el-form-item>
+      <el-form-item v-if="!form.is_recurring" label="触发时间">
+        <el-input v-model="form.trigger_time" placeholder="支持 2026-05-04 10:00 或 2026-05-04T10:00:00+08:00"/>
+      </el-form-item>
+      <el-form-item v-else label="Cron">
+        <el-input v-model="form.cron_expr" placeholder="例如：0 10 * * *"/>
+      </el-form-item>
+      <el-form-item><el-button type="success" @click="createTask">创建任务</el-button></el-form-item>
     </el-form>
   </el-card>
 
   <el-table :data="tasks" style="margin-top: 16px;" border>
     <el-table-column prop="id" label="ID" width="70" />
+    <el-table-column prop="chat_id" label="Chat ID" width="140" />
     <el-table-column prop="content" label="内容" />
     <el-table-column prop="remarks" label="备注" />
+    <el-table-column prop="trigger_time" label="触发时间" width="210" />
     <el-table-column prop="status" label="状态" width="120" />
     <el-table-column label="操作" width="220">
       <template #default="scope">
@@ -56,25 +65,27 @@ createApp({
     const chatId = ref('')
     const statusFilter = ref('')
     const tasks = ref([])
-    const form = ref({content:'', remarks:'', is_recurring:false, trigger_time:'', cron_expr:''})
+    const form = ref({content:'', remarks:'', is_recurring:false, trigger_time:'', cron_expr:'', chat_id:''})
 
     const load = async () => {
-      if (!chatId.value) return ElementPlus.ElMessage.error('请先输入 chat_id')
-      const params = new URLSearchParams({ chat_id: chatId.value })
+      const params = new URLSearchParams()
+      if (chatId.value) params.set('chat_id', chatId.value)
       if (statusFilter.value) params.set('status', statusFilter.value)
-      const res = await fetch(`/api/tasks?${params.toString()}`)
+      const q = params.toString()
+      const res = await fetch(`/api/tasks${q ? '?' + q : ''}`)
+      if (!res.ok) return ElementPlus.ElMessage.error('查询失败')
       tasks.value = await res.json()
     }
 
     const createTask = async () => {
-      if (!chatId.value) return ElementPlus.ElMessage.error('请先输入 chat_id')
+      if (!form.value.chat_id) return ElementPlus.ElMessage.error('请填写目标 Chat ID')
       const payload = {
         content: form.value.content,
         remarks: form.value.remarks,
         is_recurring: form.value.is_recurring,
         trigger_time: form.value.is_recurring ? null : form.value.trigger_time,
         cron_expr: form.value.is_recurring ? form.value.cron_expr : null,
-        chat_id: chatId.value,
+        chat_id: form.value.chat_id,
       }
       const res = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
       if (!res.ok) {
@@ -103,6 +114,7 @@ createApp({
       await load()
     }
 
+    load()
     return { chatId, statusFilter, tasks, form, load, createTask, markDone, deleteTask }
   }
 }).use(ElementPlus).mount('#app')

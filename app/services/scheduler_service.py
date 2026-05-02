@@ -1,4 +1,5 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -46,7 +47,12 @@ class SchedulerService:
             return
 
         if task.trigger_time:
-            trigger = DateTrigger(run_date=task.trigger_time)
+            tz = ZoneInfo(settings.scheduler_timezone)
+            run_date = task.trigger_time if task.trigger_time.tzinfo else task.trigger_time.replace(tzinfo=tz)
+            if run_date <= datetime.now(tz):
+                # Avoid silently dropping past jobs: fire shortly after scheduling.
+                run_date = datetime.now(tz)
+            trigger = DateTrigger(run_date=run_date, timezone=tz)
             self.scheduler.add_job(self.push_task_reminder, trigger=trigger, args=[task.id], id=self._job_id(task.id), replace_existing=True)
 
     async def reload_pending_tasks(self) -> None:

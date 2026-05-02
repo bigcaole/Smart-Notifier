@@ -1,10 +1,11 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import dateparser
 from croniter import croniter
 
 
-def parse_user_datetime(raw: str) -> datetime:
+def parse_user_datetime(raw: str, timezone_name: str = "Asia/Shanghai") -> datetime:
     text = raw.strip()
     dt = dateparser.parse(
         text,
@@ -16,7 +17,9 @@ def parse_user_datetime(raw: str) -> datetime:
     )
     if not dt:
         raise ValueError("无法识别该时间，请使用如 '明天下午3点' 或 '2026-05-04 10:00' 的格式")
-    return dt.replace(second=0, microsecond=0)
+    dt = dt.replace(second=0, microsecond=0)
+    tz = ZoneInfo(timezone_name)
+    return dt.replace(tzinfo=tz)
 
 
 def parse_human_cron(raw: str) -> str:

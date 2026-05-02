@@ -16,10 +16,10 @@ class TaskStatusUpdate(BaseModel):
 
 
 @router.get("/tasks", response_model=list[TaskRead])
-async def list_tasks(chat_id: str, status: str | None = None, db: AsyncSession = Depends(get_db)):
+async def list_tasks(chat_id: str | None = None, status: str | None = None, db: AsyncSession = Depends(get_db)):
     if status and status not in {"pending", "completed"}:
         raise HTTPException(status_code=400, detail="status must be pending or completed")
-    return await TaskService.list_tasks_by_chat_and_status(db, chat_id, status)
+    return await TaskService.list_tasks(db, status=status, chat_id=chat_id)
 
 
 @router.post("/tasks", response_model=TaskRead)

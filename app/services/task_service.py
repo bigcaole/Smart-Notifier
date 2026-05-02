@@ -1,20 +1,31 @@
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.task import Task
 from app.schemas.task import TaskCreate
 
 
 class TaskService:
     @staticmethod
+    def _to_db_naive(dt: datetime | None) -> datetime | None:
+        if dt is None:
+            return None
+        tz = ZoneInfo(settings.scheduler_timezone)
+        if dt.tzinfo:
+            return dt.astimezone(tz).replace(tzinfo=None)
+        return dt
+
+    @staticmethod
     async def create_task(db: AsyncSession, payload: TaskCreate) -> Task:
         task = Task(
             content=payload.content,
             remarks=payload.remarks,
             is_recurring=payload.is_recurring,
-            trigger_time=payload.trigger_time,
+            trigger_time=TaskService._to_db_naive(payload.trigger_time),
             cron_expr=payload.cron_expr,
             status="pending",
             snooze_count=0,
@@ -33,6 +44,17 @@ class TaskService:
     @staticmethod
     async def list_tasks_by_chat_and_status(db: AsyncSession, chat_id: str, status: str | None) -> list[Task]:
         stmt = select(Task).where(Task.chat_id == chat_id)
+        if status:
+            stmt = stmt.where(Task.status == status)
+        stmt = stmt.order_by(Task.created_at.desc())
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_tasks(db: AsyncSession, status: str | None = None, chat_id: str | None = None) -> list[Task]:
+        stmt = select(Task)
+        if chat_id:
+            stmt = stmt.where(Task.chat_id == chat_id)
         if status:
             stmt = stmt.where(Task.status == status)
         stmt = stmt.order_by(Task.created_at.desc())
@@ -69,11 +91,15 @@ class TaskService:
 
     @staticmethod
     async def snooze_task(db: AsyncSession, task: Task, minutes: int = 10) -> Task:
+        tz = ZoneInfo(settings.scheduler_timezone)
+        now = datetime.now(tz)
         task.snooze_count += 1
         if task.trigger_time is None:
-            task.trigger_time = datetime.utcnow() + timedelta(minutes=minutes)
+            task.trigger_time = now + timedelta(minutes=minutes)
         else:
-            task.trigger_time = max(task.trigger_time, datetime.utcnow()) + timedelta(minutes=minutes)
+            base_time = task.trigger_time if task.trigger_time.tzinfo else task.trigger_time.replace(tzinfo=tz)
+            task.trigger_time = max(base_time, now) + timedelta(minutes=minutes)
+        task.trigger_time = TaskService._to_db_naive(task.trigger_time)
         task.status = "pending"
         await db.commit()
         await db.refresh(task)
