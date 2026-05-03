@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.core.security import verify_basic_auth
-from app.schemas.task import TaskCreate, TaskRead
+from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
 from app.services.scheduler_service import scheduler_service
 from app.services.task_service import TaskService
 
@@ -70,3 +70,28 @@ async def delete_task(task_id: int, db: AsyncSession = Depends(get_db)):
     await TaskService.delete_task(db, task)
     scheduler_service.remove_task_job(task_id)
     return {"ok": True}
+
+
+@router.put("/tasks/{task_id}", response_model=TaskRead)
+async def update_task(task_id: int, payload: TaskUpdate, db: AsyncSession = Depends(get_db)):
+    task = await TaskService.get_task(db, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if payload.status and payload.status not in {"pending", "completed"}:
+        raise HTTPException(status_code=400, detail="status must be pending or completed")
+
+    updated = await TaskService.update_task_fields(
+        db,
+        task,
+        content=payload.content,
+        remarks=payload.remarks,
+        trigger_time=payload.trigger_time,
+        cron_expr=payload.cron_expr,
+        status=payload.status,
+    )
+    if updated.status == "pending":
+        scheduler_service.schedule_task(updated)
+    else:
+        scheduler_service.remove_task_job(updated.id)
+    return _present(updated)

@@ -26,3 +26,11 @@ class TaskRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TaskUpdate(BaseModel):
+    content: str | None = None
+    remarks: str | None = None
+    trigger_time: datetime | None = None
+    cron_expr: str | None = None
+    status: str | None = None

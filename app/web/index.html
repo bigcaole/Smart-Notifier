@@ -9,55 +9,50 @@
   <script src="https://unpkg.com/element-plus"></script>
 </head>
 <body>
-<div id="app" style="max-width: 1120px; margin: 24px auto; padding: 12px;">
+<div id="app" style="max-width:1180px;margin:24px auto;padding:12px;">
   <h2>Smart-Notifier 管理端</h2>
 
   <el-card v-if="!authed" style="max-width:460px;margin:30px auto;">
-    <template #header>登录（HTTP Basic Auth）</template>
+    <template #header>登录</template>
     <el-form label-width="90px">
       <el-form-item label="用户名"><el-input v-model="login.username"/></el-form-item>
       <el-form-item label="密码"><el-input v-model="login.password" type="password" show-password/></el-form-item>
       <el-form-item><el-button type="primary" @click="doLogin">登录</el-button></el-form-item>
     </el-form>
-    <div style="color:#888;font-size:13px;">请使用容器环境变量 WEB_USERNAME / WEB_PASSWORD。</div>
   </el-card>
 
   <div v-else>
-    <el-alert type="info" :closable="false" show-icon title="小白模式：机器人创建的任务会直接显示在列表；若只看某个人可填 Chat ID 过滤。" />
-
-    <el-form :inline="true" @submit.prevent style="margin-top:12px;">
-      <el-form-item label="Chat ID(可选)"><el-input v-model="chatId" placeholder="不填则全部" style="width:220px"/></el-form-item>
+    <el-form :inline="true" @submit.prevent>
+      <el-form-item label="Chat ID"><el-input v-model="chatId" placeholder="可选：不填为全部" style="width:220px"/></el-form-item>
       <el-form-item>
         <el-select v-model="statusFilter" style="width:140px">
-          <el-option label="全部" value="" />
-          <el-option label="待办" value="pending" />
-          <el-option label="完成" value="completed" />
+          <el-option label="全部" value=""/><el-option label="待办" value="pending"/><el-option label="完成" value="completed"/>
         </el-select>
       </el-form-item>
-      <el-form-item><el-button type="primary" @click="load">刷新任务</el-button></el-form-item>
-      <el-form-item><el-button @click="logout">退出登录</el-button></el-form-item>
+      <el-form-item><el-button type="primary" @click="load">刷新</el-button></el-form-item>
+      <el-form-item><el-button @click="logout">退出</el-button></el-form-item>
     </el-form>
 
     <el-card>
-      <template #header>新建任务（少输入版）</template>
+      <template #header>新建任务</template>
       <el-form label-width="120px">
-        <el-form-item label="目标 Chat ID"><el-input v-model="form.chat_id" placeholder="机器人里发送 /myid 获取"/></el-form-item>
-        <el-form-item label="提醒内容"><el-input v-model="form.content" placeholder="例如：给客户发周报"/></el-form-item>
-        <el-form-item label="备注"><el-input v-model="form.remarks" placeholder="可选"/></el-form-item>
-        <el-form-item label="类型">
-          <el-radio-group v-model="form.is_recurring">
+        <el-form-item label="目标 Chat ID"><el-input v-model="form.chat_id"/></el-form-item>
+        <el-form-item label="提醒内容"><el-input v-model="form.content"/></el-form-item>
+        <el-form-item label="备注"><el-input v-model="form.remarks"/></el-form-item>
+        <el-form-item label="提醒类型">
+          <el-radio-group v-model="form.is_recurring" @change="onTypeChange">
             <el-radio :value="false">一次性</el-radio>
             <el-radio :value="true">周期循环</el-radio>
           </el-radio-group>
         </el-form-item>
 
         <el-form-item v-if="!form.is_recurring" label="提醒时间">
-          <el-input v-model="form.once_time" placeholder="如：2026-05-04 10:00（上海时间）"/>
+          <el-input v-model="form.once_time" placeholder="2026-05-04 10:00"/>
         </el-form-item>
 
         <template v-else>
           <el-form-item label="循环方式">
-            <el-select v-model="form.recurring_mode" style="width:220px">
+            <el-select v-model="form.recurring_mode" style="width:220px" @change="onRecurringModeChange">
               <el-option label="每周" value="weekly"/>
               <el-option label="每月" value="monthly"/>
               <el-option label="每季度" value="quarterly"/>
@@ -65,43 +60,60 @@
               <el-option label="每隔N天" value="interval_days"/>
             </el-select>
           </el-form-item>
-          <el-form-item label="时间(HH:MM)"><el-input v-model="form.hhmm" placeholder="09:30" style="width:160px"/></el-form-item>
+          <el-form-item label="时间(HH:MM)"><el-input v-model="form.hhmm" style="width:180px"/></el-form-item>
           <el-form-item v-if="form.recurring_mode==='weekly'" label="周几">
-            <el-select v-model="form.weekday" style="width:140px">
+            <el-select v-model="form.weekday" style="width:160px">
               <el-option label="周一" value="1"/><el-option label="周二" value="2"/><el-option label="周三" value="3"/>
               <el-option label="周四" value="4"/><el-option label="周五" value="5"/><el-option label="周六" value="6"/><el-option label="周日" value="7"/>
             </el-select>
           </el-form-item>
-          <el-form-item v-if="form.recurring_mode==='monthly' || form.recurring_mode==='quarterly'" label="每月几号">
-            <el-input v-model="form.month_day" placeholder="1-31" style="width:140px"/>
+          <el-form-item v-if="form.recurring_mode==='monthly' || form.recurring_mode==='quarterly'" label="日期(1-31)">
+            <el-input v-model="form.month_day" style="width:160px"/>
           </el-form-item>
           <el-form-item v-if="form.recurring_mode==='yearly'" label="日期(MM-DD)">
-            <el-input v-model="form.year_mmdd" placeholder="10-01" style="width:140px"/>
+            <el-input v-model="form.year_mmdd" style="width:180px"/>
           </el-form-item>
           <el-form-item v-if="form.recurring_mode==='interval_days'" label="间隔天数">
-            <el-input v-model="form.interval_days" placeholder="例如 3" style="width:140px"/>
+            <el-input v-model="form.interval_days" style="width:160px"/>
           </el-form-item>
         </template>
 
-        <el-form-item><el-button type="success" @click="createTask">创建任务</el-button></el-form-item>
+        <el-form-item><el-button type="success" @click="createTask">创建</el-button></el-form-item>
       </el-form>
     </el-card>
 
-    <el-table :data="tasks" style="margin-top:16px;" border>
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="chat_id" label="Chat ID" width="150" />
-      <el-table-column prop="content" label="内容" />
-      <el-table-column prop="remarks" label="备注" />
-      <el-table-column prop="trigger_time" label="提醒时间(上海)" width="190" />
-      <el-table-column prop="cron_expr" label="循环规则" width="190" />
-      <el-table-column prop="status" label="状态" width="100" />
-      <el-table-column label="操作" width="220">
-        <template #default="scope">
-          <el-button size="small" type="success" :disabled="scope.row.status==='completed'" @click="markDone(scope.row)">✅ 完成</el-button>
-          <el-button size="small" type="danger" @click="deleteTask(scope.row)">🗑️ 删除</el-button>
+    <el-table :data="tasks" border style="margin-top:16px;" :default-sort="{ prop: 'id', order: 'descending' }">
+      <el-table-column prop="id" label="ID" width="70"/>
+      <el-table-column prop="chat_id" label="ChatID" width="120"/>
+      <el-table-column prop="content" label="内容" min-width="180"/>
+      <el-table-column prop="trigger_time" label="提醒时间" width="170"/>
+      <el-table-column prop="cron_expr" label="循环规则" min-width="180"/>
+      <el-table-column prop="status" label="状态" width="90"/>
+      <el-table-column label="提醒类型" width="90"><template #default="s">{{ s.row.is_recurring ? '周期' : '单次' }}</template></el-table-column>
+      <el-table-column label="操作" width="280">
+        <template #default="s">
+          <el-button size="small" @click="openEdit(s.row)">✏️修改</el-button>
+          <el-button size="small" type="success" :disabled="s.row.status==='completed'" @click="markDone(s.row)">完成</el-button>
+          <el-button size="small" type="danger" @click="deleteTask(s.row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
+
+    <el-dialog v-model="edit.visible" title="修改任务" width="560px">
+      <el-form label-width="120px">
+        <el-form-item label="内容"><el-input v-model="edit.form.content"/></el-form-item>
+        <el-form-item label="备注"><el-input v-model="edit.form.remarks"/></el-form-item>
+        <el-form-item label="提醒时间"><el-input v-model="edit.form.trigger_time" placeholder="可空"/></el-form-item>
+        <el-form-item label="循环规则"><el-input v-model="edit.form.cron_expr" placeholder="可空"/></el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="edit.form.status" style="width:160px"><el-option value="pending" label="pending"/><el-option value="completed" label="completed"/></el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="edit.visible=false">取消</el-button>
+        <el-button type="primary" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </div>
 
@@ -112,15 +124,11 @@ createApp({
     const auth = ref(localStorage.getItem('sn_basic_auth') || '')
     const authed = ref(!!auth.value)
     const login = ref({username:'', password:''})
-
     const chatId = ref('')
     const statusFilter = ref('')
     const tasks = ref([])
-    const form = ref({
-      chat_id:'', content:'', remarks:'',
-      is_recurring:false, once_time:'',
-      recurring_mode:'weekly', hhmm:'09:30', weekday:'1', month_day:'1', year_mmdd:'01-01', interval_days:'3'
-    })
+    const form = ref({ chat_id:'', content:'', remarks:'', is_recurring:false, once_time:'', recurring_mode:'weekly', hhmm:'09:30', weekday:'1', month_day:'1', year_mmdd:'01-01', interval_days:'3' })
+    const edit = ref({ visible:false, taskId:null, form:{ content:'', remarks:'', trigger_time:'', cron_expr:'', status:'pending' } })
 
     const authFetch = (url, options={}) => {
       const headers = Object.assign({}, options.headers || {}, auth.value ? { Authorization: `Basic ${auth.value}` } : {})
@@ -134,81 +142,78 @@ createApp({
       auth.value = token
       localStorage.setItem('sn_basic_auth', token)
       authed.value = true
-      ElementPlus.ElMessage.success('登录成功')
       await load()
     }
 
-    const logout = () => {
-      localStorage.removeItem('sn_basic_auth')
-      auth.value = ''
-      authed.value = false
+    const logout = () => { localStorage.removeItem('sn_basic_auth'); auth.value=''; authed.value=false }
+
+    const onTypeChange = () => {
+      if (!form.value.is_recurring) form.value.recurring_mode = 'weekly'
+    }
+
+    const onRecurringModeChange = () => {
+      if (form.value.recurring_mode !== 'interval_days' && !form.value.hhmm) form.value.hhmm = '09:30'
     }
 
     const buildRecurringExpr = () => {
       const [hh, mm] = form.value.hhmm.split(':')
       if (!hh || !mm) throw new Error('时间格式应为 HH:MM')
-      const h = parseInt(hh, 10)
-      const m = parseInt(mm, 10)
+      const h = parseInt(hh, 10), m = parseInt(mm, 10)
       const mode = form.value.recurring_mode
       if (mode === 'weekly') return `${m} ${h} * * ${form.value.weekday === '7' ? 0 : form.value.weekday}`
       if (mode === 'monthly') return `${m} ${h} ${parseInt(form.value.month_day,10)} * *`
       if (mode === 'quarterly') return `${m} ${h} ${parseInt(form.value.month_day,10)} 1,4,7,10 *`
-      if (mode === 'yearly') {
-        const [mon, day] = form.value.year_mmdd.split('-')
-        return `${m} ${h} ${parseInt(day,10)} ${parseInt(mon,10)} *`
-      }
+      if (mode === 'yearly') { const [mon, day] = form.value.year_mmdd.split('-'); return `${m} ${h} ${parseInt(day,10)} ${parseInt(mon,10)} *` }
       if (mode === 'interval_days') return `every_ndays:${parseInt(form.value.interval_days,10)}:${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`
-      throw new Error('未知循环模式')
+      throw new Error('未知循环方式')
     }
 
     const load = async () => {
-      const params = new URLSearchParams()
-      if (chatId.value) params.set('chat_id', chatId.value)
-      if (statusFilter.value) params.set('status', statusFilter.value)
-      const q = params.toString()
-      const res = await authFetch(`/api/tasks${q ? '?' + q : ''}`)
-      if (res.status === 401) return logout()
-      if (!res.ok) return ElementPlus.ElMessage.error('查询失败')
+      const params = new URLSearchParams(); if (chatId.value) params.set('chat_id', chatId.value); if (statusFilter.value) params.set('status', statusFilter.value)
+      const q = params.toString(); const res = await authFetch(`/api/tasks${q ? '?' + q : ''}`)
+      if (res.status === 401) return logout(); if (!res.ok) return ElementPlus.ElMessage.error('查询失败')
       tasks.value = await res.json()
     }
 
     const createTask = async () => {
       try {
-        if (!form.value.chat_id) return ElementPlus.ElMessage.error('请填写目标 Chat ID')
-        const payload = {
-          content: form.value.content,
-          remarks: form.value.remarks,
-          is_recurring: form.value.is_recurring,
-          trigger_time: form.value.is_recurring ? null : form.value.once_time,
-          cron_expr: form.value.is_recurring ? buildRecurringExpr() : null,
-          chat_id: form.value.chat_id,
-        }
-        const res = await authFetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-        if (res.status === 401) return logout()
-        if (!res.ok) return ElementPlus.ElMessage.error(`创建失败: ${await res.text()}`)
-        ElementPlus.ElMessage.success('创建成功')
-        await load()
-      } catch (e) {
-        ElementPlus.ElMessage.error(e.message || '创建失败')
-      }
+        if (!form.value.chat_id || !form.value.content) return ElementPlus.ElMessage.error('请填写 Chat ID 和内容')
+        const payload = { content: form.value.content, remarks: form.value.remarks, is_recurring: form.value.is_recurring, trigger_time: form.value.is_recurring ? null : form.value.once_time, cron_expr: form.value.is_recurring ? buildRecurringExpr() : null, chat_id: form.value.chat_id }
+        const res = await authFetch('/api/tasks', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) })
+        if (res.status===401) return logout(); if (!res.ok) return ElementPlus.ElMessage.error(await res.text())
+        ElementPlus.ElMessage.success('创建成功'); await load()
+      } catch (e) { ElementPlus.ElMessage.error(e.message || '创建失败') }
+    }
+
+    const openEdit = (row) => {
+      edit.value.taskId = row.id
+      edit.value.form = { content: row.content || '', remarks: row.remarks || '', trigger_time: row.trigger_time || '', cron_expr: row.cron_expr || '', status: row.status || 'pending' }
+      edit.value.visible = true
+    }
+
+    const saveEdit = async () => {
+      const payload = { ...edit.value.form }
+      if (!payload.trigger_time) delete payload.trigger_time
+      if (!payload.cron_expr) payload.cron_expr = null
+      const res = await authFetch(`/api/tasks/${edit.value.taskId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) })
+      if (res.status===401) return logout(); if (!res.ok) return ElementPlus.ElMessage.error(await res.text())
+      edit.value.visible = false
+      ElementPlus.ElMessage.success('修改成功')
+      await load()
     }
 
     const markDone = async (row) => {
       const res = await authFetch(`/api/tasks/${row.id}/status`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status:'completed'}) })
-      if (res.status === 401) return logout()
-      if (!res.ok) return ElementPlus.ElMessage.error('更新失败')
-      await load()
+      if (res.status===401) return logout(); if (!res.ok) return ElementPlus.ElMessage.error('更新失败'); await load()
     }
 
     const deleteTask = async (row) => {
       const res = await authFetch(`/api/tasks/${row.id}`, { method:'DELETE' })
-      if (res.status === 401) return logout()
-      if (!res.ok) return ElementPlus.ElMessage.error('删除失败')
-      await load()
+      if (res.status===401) return logout(); if (!res.ok) return ElementPlus.ElMessage.error('删除失败'); await load()
     }
 
     if (authed.value) load()
-    return { authed, login, doLogin, logout, chatId, statusFilter, tasks, form, load, createTask, markDone, deleteTask }
+    return { authed, login, doLogin, logout, chatId, statusFilter, tasks, form, edit, onTypeChange, onRecurringModeChange, load, createTask, openEdit, saveEdit, markDone, deleteTask }
   }
 }).use(ElementPlus).mount('#app')
 </script>

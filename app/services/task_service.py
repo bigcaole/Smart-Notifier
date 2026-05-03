@@ -96,6 +96,31 @@ class TaskService:
         return task
 
     @staticmethod
+    async def update_task_fields(
+        db: AsyncSession,
+        task: Task,
+        *,
+        content: str | None = None,
+        remarks: str | None = None,
+        trigger_time: datetime | None = None,
+        cron_expr: str | None = None,
+        status: str | None = None,
+    ) -> Task:
+        if content is not None:
+            task.content = content
+        if remarks is not None:
+            task.remarks = remarks
+        if trigger_time is not None:
+            task.trigger_time = TaskService._to_db_utc_naive(trigger_time)
+        if cron_expr is not None:
+            task.cron_expr = cron_expr
+        if status is not None:
+            task.status = status
+        await db.commit()
+        await db.refresh(task)
+        return task
+
+    @staticmethod
     async def delete_task(db: AsyncSession, task: Task) -> None:
         await db.delete(task)
         await db.commit()
