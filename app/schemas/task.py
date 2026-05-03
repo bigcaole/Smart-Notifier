@@ -23,6 +23,9 @@ class TaskRead(BaseModel):
     snooze_count: int
     chat_id: str
     created_at: datetime
+    reminder_type: str | None = None
+    rule_text: str | None = None
+    next_run_time: datetime | None = None
 
     class Config:
         from_attributes = True

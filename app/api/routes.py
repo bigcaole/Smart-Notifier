@@ -16,8 +16,22 @@ class TaskStatusUpdate(BaseModel):
 
 
 def _present(task):
-    task.trigger_time = TaskService.to_local_display(task.trigger_time)
-    return task
+    local_trigger = TaskService.to_local_display(task.trigger_time)
+    return TaskRead(
+        id=task.id,
+        content=task.content,
+        remarks=task.remarks,
+        is_recurring=task.is_recurring,
+        trigger_time=local_trigger,
+        cron_expr=task.cron_expr,
+        status=task.status,
+        snooze_count=task.snooze_count,
+        chat_id=task.chat_id,
+        created_at=task.created_at,
+        reminder_type="周期" if task.is_recurring else "一次性",
+        rule_text=TaskService.rule_text(task),
+        next_run_time=TaskService.next_run_local(task),
+    )
 
 
 @router.get("/tasks", response_model=list[TaskRead])

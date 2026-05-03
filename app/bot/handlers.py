@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -96,14 +97,17 @@ async def _track_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 def _fmt_task(task) -> str:
     local_time = TaskService.to_local_display(task.trigger_time)
+    next_run = TaskService.next_run_local(task)
     t = local_time.strftime("%Y-%m-%d %H:%M") if local_time else "-"
+    n = next_run.strftime("%Y-%m-%d %H:%M") if next_run else "-"
     rtype = "周期" if task.is_recurring else "单次"
-    cron = task.cron_expr or "-"
+    cron = TaskService.rule_text(task)
     return (
         f"ID: {task.id}\n"
         f"ChatID: {task.chat_id}\n"
         f"内容: {task.content}\n"
         f"提醒时间: {t}\n"
+        f"下次提醒: {n}\n"
         f"循环规则: {cron}\n"
         f"提醒类型: {rtype}\n"
         f"状态: {task.status}"
@@ -467,6 +471,10 @@ async def setup_bot_commands(app: Application) -> None:
             BotCommand("help", "帮助"),
         ]
     )
+    try:
+        await app.bot.set_chat_menu_button(menu_button=None)
+    except Exception:
+        pass
 
 
 def build_application(token: str) -> Application:
@@ -505,5 +513,3 @@ def build_application(token: str) -> Application:
     app.add_handler(MessageHandler(filters.Document.ALL, restore_backup))
     return app
 
-
-import asyncio

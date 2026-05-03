@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from croniter import croniter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +30,48 @@ class TaskService:
             return None
         local_tz = TaskService._local_tz()
         return dt.replace(tzinfo=timezone.utc).astimezone(local_tz).replace(tzinfo=None)
+
+    @staticmethod
+    def rule_text(task: Task) -> str:
+        if not task.is_recurring:
+            return "一次性"
+        if not task.cron_expr:
+            return "-"
+        if task.cron_expr.startswith("every_ndays:"):
+            _, d, hh, mm = task.cron_expr.split(":")
+            return f"每隔{int(d)}天 {hh}:{mm}"
+        parts = task.cron_expr.split()
+        if len(parts) == 5:
+            minute, hour, day, month, weekday = parts
+            if day == "*" and month == "*" and weekday != "*":
+                return f"每周(周{weekday}) {int(hour):02d}:{int(minute):02d}"
+            if day != "*" and month == "*" and weekday == "*":
+                return f"每月{day}号 {int(hour):02d}:{int(minute):02d}"
+            if day != "*" and month in {"1,4,7,10"}:
+                return f"每季度{day}号 {int(hour):02d}:{int(minute):02d}"
+            if day != "*" and month != "*" and weekday == "*":
+                return f"每年{month}-{day} {int(hour):02d}:{int(minute):02d}"
+        return task.cron_expr
+
+    @staticmethod
+    def next_run_local(task: Task) -> datetime | None:
+        tz = TaskService._local_tz()
+        now_local = datetime.now(tz)
+        if task.status != "pending":
+            return None
+        if task.is_recurring and task.cron_expr:
+            if task.cron_expr.startswith("every_ndays:"):
+                _, d, hh, mm = task.cron_expr.split(":")
+                days = int(d)
+                base = now_local.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+                if base <= now_local:
+                    base = base + timedelta(days=days)
+                return base.replace(tzinfo=None)
+            if croniter.is_valid(task.cron_expr):
+                nxt = croniter(task.cron_expr, now_local).get_next(datetime)
+                return nxt.replace(tzinfo=None)
+            return None
+        return TaskService.to_local_display(task.trigger_time)
 
     @staticmethod
     async def create_task(db: AsyncSession, payload: TaskCreate) -> Task:
