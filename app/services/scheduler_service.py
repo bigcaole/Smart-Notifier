@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application
 
@@ -40,19 +41,34 @@ class SchedulerService:
             return
         self.remove_task_job(task.id)
 
+        tz = ZoneInfo(settings.scheduler_timezone)
+        now_local = datetime.now(tz)
+
         if task.is_recurring and task.cron_expr:
+            if task.cron_expr.startswith("every_ndays:"):
+                _, days_text, hh_text, mm_text = task.cron_expr.split(":")
+                interval_days = int(days_text)
+                hh = int(hh_text)
+                mm = int(mm_text)
+                start = now_local.replace(hour=hh, minute=mm, second=0, microsecond=0)
+                if start <= now_local:
+                    start = start + timedelta(days=interval_days)
+                trigger = IntervalTrigger(days=interval_days, start_date=start, timezone=tz)
+                self.scheduler.add_job(self.push_task_reminder, trigger=trigger, args=[task.id], id=self._job_id(task.id), replace_existing=True)
+                return
+
             minute, hour, day, month, weekday = task.cron_expr.split()
-            trigger = CronTrigger(minute=minute, hour=hour, day=day, month=month, day_of_week=weekday)
+            trigger = CronTrigger(minute=minute, hour=hour, day=day, month=month, day_of_week=weekday, timezone=tz)
             self.scheduler.add_job(self.push_task_reminder, trigger=trigger, args=[task.id], id=self._job_id(task.id), replace_existing=True)
             return
 
         if task.trigger_time:
-            tz = ZoneInfo(settings.scheduler_timezone)
-            run_date = task.trigger_time if task.trigger_time.tzinfo else task.trigger_time.replace(tzinfo=tz)
-            if run_date <= datetime.now(tz):
-                # Avoid silently dropping past jobs: fire shortly after scheduling.
-                run_date = datetime.now(tz)
-            trigger = DateTrigger(run_date=run_date, timezone=tz)
+            # DB stores UTC naive; convert to local timezone for trigger.
+            run_date_utc = task.trigger_time.replace(tzinfo=timezone.utc)
+            run_date_local = run_date_utc.astimezone(tz)
+            if run_date_local <= now_local:
+                run_date_local = now_local + timedelta(seconds=1)
+            trigger = DateTrigger(run_date=run_date_local, timezone=tz)
             self.scheduler.add_job(self.push_task_reminder, trigger=trigger, args=[task.id], id=self._job_id(task.id), replace_existing=True)
 
     async def reload_pending_tasks(self) -> None:

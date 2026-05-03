@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -11,13 +11,24 @@ from app.schemas.task import TaskCreate
 
 class TaskService:
     @staticmethod
-    def _to_db_naive(dt: datetime | None) -> datetime | None:
+    def _local_tz() -> ZoneInfo:
+        return ZoneInfo(settings.scheduler_timezone)
+
+    @staticmethod
+    def _to_db_utc_naive(dt: datetime | None) -> datetime | None:
         if dt is None:
             return None
-        tz = ZoneInfo(settings.scheduler_timezone)
-        if dt.tzinfo:
-            return dt.astimezone(tz).replace(tzinfo=None)
-        return dt
+        local_tz = TaskService._local_tz()
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=local_tz)
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+    @staticmethod
+    def to_local_display(dt: datetime | None) -> datetime | None:
+        if dt is None:
+            return None
+        local_tz = TaskService._local_tz()
+        return dt.replace(tzinfo=timezone.utc).astimezone(local_tz).replace(tzinfo=None)
 
     @staticmethod
     async def create_task(db: AsyncSession, payload: TaskCreate) -> Task:
@@ -25,7 +36,7 @@ class TaskService:
             content=payload.content,
             remarks=payload.remarks,
             is_recurring=payload.is_recurring,
-            trigger_time=TaskService._to_db_naive(payload.trigger_time),
+            trigger_time=TaskService._to_db_utc_naive(payload.trigger_time),
             cron_expr=payload.cron_expr,
             status="pending",
             snooze_count=0,
@@ -91,15 +102,16 @@ class TaskService:
 
     @staticmethod
     async def snooze_task(db: AsyncSession, task: Task, minutes: int = 10) -> Task:
-        tz = ZoneInfo(settings.scheduler_timezone)
-        now = datetime.now(tz)
+        local_tz = TaskService._local_tz()
+        now_local = datetime.now(local_tz)
+
         task.snooze_count += 1
         if task.trigger_time is None:
-            task.trigger_time = now + timedelta(minutes=minutes)
+            next_local = now_local + timedelta(minutes=minutes)
         else:
-            base_time = task.trigger_time if task.trigger_time.tzinfo else task.trigger_time.replace(tzinfo=tz)
-            task.trigger_time = max(base_time, now) + timedelta(minutes=minutes)
-        task.trigger_time = TaskService._to_db_naive(task.trigger_time)
+            current_local = task.trigger_time.replace(tzinfo=timezone.utc).astimezone(local_tz)
+            next_local = max(current_local, now_local) + timedelta(minutes=minutes)
+        task.trigger_time = TaskService._to_db_utc_naive(next_local)
         task.status = "pending"
         await db.commit()
         await db.refresh(task)

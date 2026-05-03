@@ -3,13 +3,12 @@ import contextlib
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
 from app.api.routes import router as api_router
 from app.bot.handlers import build_application
 from app.core.config import settings
-from app.core.security import verify_basic_auth
 from app.services.scheduler_service import scheduler_service
 
 logger = logging.getLogger(__name__)
@@ -58,6 +57,6 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(api_router)
 
 
-@app.get("/", dependencies=[Depends(verify_basic_auth)])
+@app.get("/")
 async def web_index():
     return FileResponse("app/web/index.html")

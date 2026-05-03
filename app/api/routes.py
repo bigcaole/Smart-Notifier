@@ -15,18 +15,24 @@ class TaskStatusUpdate(BaseModel):
     status: str
 
 
+def _present(task):
+    task.trigger_time = TaskService.to_local_display(task.trigger_time)
+    return task
+
+
 @router.get("/tasks", response_model=list[TaskRead])
 async def list_tasks(chat_id: str | None = None, status: str | None = None, db: AsyncSession = Depends(get_db)):
     if status and status not in {"pending", "completed"}:
         raise HTTPException(status_code=400, detail="status must be pending or completed")
-    return await TaskService.list_tasks(db, status=status, chat_id=chat_id)
+    tasks = await TaskService.list_tasks(db, status=status, chat_id=chat_id)
+    return [_present(t) for t in tasks]
 
 
 @router.post("/tasks", response_model=TaskRead)
 async def create_task(payload: TaskCreate, db: AsyncSession = Depends(get_db)):
     task = await TaskService.create_task(db, payload)
     scheduler_service.schedule_task(task)
-    return task
+    return _present(task)
 
 
 @router.post("/tasks/{task_id}/done", response_model=TaskRead)
@@ -36,7 +42,7 @@ async def done_task(task_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Task not found")
     task = await TaskService.mark_done(db, task)
     scheduler_service.remove_task_job(task.id)
-    return task
+    return _present(task)
 
 
 @router.put("/tasks/{task_id}/status", response_model=TaskRead)
@@ -53,7 +59,7 @@ async def update_task_status(task_id: int, payload: TaskStatusUpdate, db: AsyncS
         scheduler_service.remove_task_job(task.id)
     else:
         scheduler_service.schedule_task(task)
-    return task
+    return _present(task)
 
 
 @router.delete("/tasks/{task_id}")
